@@ -165,13 +165,31 @@ namespace ElmaPasswordGenerator
                 shA256Managed = Sha256ManagedPool.Get();
                 int byteCount1 = Encoding.UTF8.GetByteCount(input);
                 int byteCount2 = Encoding.UTF8.GetByteCount(salt);
-                return ActionWithMemoryBuffer<byte, (SHA256Managed, string, string, int), string>(byteCount1 + byteCount2, (shA256Managed, input, salt, byteCount1), new MemoryHelper.ActionWithMemoryBufferAndParameterDelegate<byte, (SHA256Managed, string, string, int), string>(EncryptionHelper.GetSha256HashAction));
+                return ActionWithMemoryBuffer<byte, (SHA256Managed, string, string, int), string>(byteCount1 + byteCount2, (shA256Managed, input, salt, byteCount1), new ActionWithMemoryBufferAndParameterDelegate<byte, (SHA256Managed, string, string, int), string>(GetSha256HashAction));
             }
             finally
             {
                 Sha256ManagedPool.Return(shA256Managed);
             }
         }
+
+        /// <summary>
+        /// Действие для получения SHA256 хеша от пароля с солью, использующее буфер памяти для оптимизации производительности и уменьшения количества выделений памяти
+        /// </summary> 
+        /// <param name="buffer">Буфер памяти для записи байтов пароля и соли</param>
+        /// <param name="offset">Смещение в буфере для записи</param>
+        /// <param name="length">Длина данных для хеширования (длина пароля + длина соли в байтах)</param>
+        /// <param name="param">Параметр, содержащий экземпляр SHA256Managed, пароль, соль и длину пароля в байтах для правильного размещения в буфере</param>
+        /// <returns>Хеш пароля с солью в виде строки</returns>
+        private static string GetSha256HashAction(byte[] buffer, int offset, int length, (SHA256Managed, string, string, int) param)
+        {
+            (SHA256Managed shA256Managed, string s1, string s2, int num) = param;
+            Encoding.UTF8.GetBytes(s1, 0, s1.Length, buffer, offset);
+            Encoding.UTF8.GetBytes(s2, 0, s2.Length, buffer, offset + num);
+            return Convert.ToBase64String(shA256Managed.ComputeHash(buffer, offset, length));
+        }
+
+
 
         /// <summary>
         /// Вспомогательный метод для работы с буфером памяти, выделяемым из пула
