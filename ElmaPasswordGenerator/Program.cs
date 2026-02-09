@@ -14,7 +14,15 @@ namespace ElmaPasswordGenerator
 {
     internal class Program
     {
+        /// <summary>
+        /// Пул для переиспользования экземпляров RNGCryptoServiceProvider
+        /// </summary> <remarks>
+        /// В .NET 6 и выше можно использовать RandomNumberGenerator.Shared
+        /// </remarks>   
         private static readonly Microsoft.Extensions.ObjectPool.ObjectPool<RNGCryptoServiceProvider> RngCryptoServiceProviderPool = Microsoft.Extensions.ObjectPool.ObjectPool.Create<RNGCryptoServiceProvider>();
+        /// <summary>     
+        ///  Пул для переиспользования экземпляров SHA256Managed
+        /// </summary>
         private static readonly Microsoft.Extensions.ObjectPool.ObjectPool<SHA256Managed> Sha256ManagedPool = Microsoft.Extensions.ObjectPool.ObjectPool.Create<SHA256Managed>();
         static int Main(string[] args)
         {
@@ -57,6 +65,12 @@ namespace ElmaPasswordGenerator
             }
         }
 
+        /// <summary>
+        /// Генерация пароля с заданными параметрами
+        /// </summary> <param name="length">Длина пароля</param>
+        /// <param name="useDigits">Включать ли цифры</param>
+        /// <param name="useSpecial">Включать ли специальные символы</param> 
+        /// <returns>Сгенерированный пароль</returns>
         static string GeneratePassword(int length, bool useDigits = true, bool useSpecial = true)
         {
             const string lower = "abcdefghijklmnopqrstuvwxyz";
@@ -89,11 +103,20 @@ namespace ElmaPasswordGenerator
             return new string(result.ToString().OrderBy(_ => GetRandomInt()).ToArray());
         }
 
+        /// <summary>
+        /// Получить случайный символ из строки
+        /// </summary> 
+        /// <param name="chars">Строка с символами для выбора</param> 
+        /// <returns>Случайный символ</returns>
         static char GetRandomChar(string chars)
         {
             return chars[GetRandomInt(chars.Length)];
         }
 
+        /// <summary>
+        /// Получить случайное целое число от 0 до max-1
+        /// </summary> <param name="max">Верхняя граница (исключительно)</param>
+         /// <returns>Случайное целое число</returns>
         static int GetRandomInt(int max = int.MaxValue)
         {
             byte[] buffer = new byte[4];
@@ -105,7 +128,11 @@ namespace ElmaPasswordGenerator
             return Math.Abs(value % max);
         }
 
-
+        /// <summary>
+        /// Генерация соли для пароля
+        /// </summary> 
+        /// <param name="size">Размер соли в байтах</param>
+         /// <returns>Сгенерированная соль в виде строки</returns>
         private static string GenerateSalt(int size = 16)
         {
             byte[] numArray = new byte[size];
@@ -122,6 +149,12 @@ namespace ElmaPasswordGenerator
             }
         }
 
+        /// <summary>
+        /// Получить SHA256 хеш от пароля с солью
+        /// </summary> 
+        /// <param name="input">Пароль</param>
+        /// <param name="salt">Соль</param>
+        /// <returns>Хеш пароля с солью в виде строки</returns> 
         public static string GetSha256Hash(string input, string salt)
         {
             input = input ?? "";
@@ -140,6 +173,15 @@ namespace ElmaPasswordGenerator
             }
         }
 
+        /// <summary>
+        /// Вспомогательный метод для работы с буфером памяти, выделяемым из пула
+        /// </summary> <typeparam name="T">Тип данных в буфере</typeparam>
+        /// <typeparam name="TParam">Тип параметра для действия</typeparam>
+        /// <typeparam name="TResult">Тип результата действия</typeparam>
+        /// <param name="minimumBufferLength">Минимальная длина буфера</param>
+        /// <param name="param">Параметр для действия</param>
+        /// <param name="action">Действие, использующее буфер и параметр</param>
+        /// <returns>Результат действия</returns>
         public static TResult ActionWithMemoryBuffer<T, TParam, TResult>(int minimumBufferLength, TParam param, ActionWithMemoryBufferAndParameterDelegate<T, TParam, TResult> action)
         {
             CheckArgument(minimumBufferLength > 0, "minimumBufferLength > 0");
@@ -153,20 +195,36 @@ namespace ElmaPasswordGenerator
             }
         }
 
+        /// <summary>
+        /// Проверка условия для аргумента и выброс исключения при нарушении
+        /// </summary> <param name="condition">Условие для проверки</param> 
+        /// <param name="conditionText">Текст условия для сообщения об ошибке</param>
         public static void CheckArgument(bool condition, string conditionText)
         {
             if (!condition)
                 throw new ArgumentException("Неверное значение аргумента. Нарушено условие: {0}", conditionText);
         }
 
+        /// <summary> Проверка на null для аргумента и выброс исключения при нарушении
+        /// </summary> <param name="value">Значение аргумента для проверки</param> 
+        /// <param name="argumentName">Имя аргумента для сообщения об ошибке</param> 
         public static void ArgumentNotNull(object value, string argumentName)
         {
             if (value == null)
                 throw new ArgumentNullException(argumentName);
         }
 
+        /// <summary> Делегат для действий, использующих буфер памяти и дополнительный параметр
+        /// </summary> 
+        /// <typeparam name="T">Тип данных в буфере</typeparam>
+        /// <typeparam name="TParam">Тип дополнительного параметра</typeparam>
+        /// <typeparam name="TResult">Тип результата действия</typeparam>
         public delegate TResult ActionWithMemoryBufferAndParameterDelegate<in T, in TParam, out TResult>(T[] buffer, int bufferOffset, int bufferLength, TParam param);
 
+        /// <summary> 
+        /// Класс для хранения параметров командной строки
+        /// </summary> 
+        /// <remarks>Используется для удобства передачи параметров между методами и улучшения читаемости кода</remarks>
         private sealed class CliOptions
         {
             public int Length { get; set; } = 12;
@@ -178,6 +236,10 @@ namespace ElmaPasswordGenerator
             public bool ShowHelp { get; set; }
         }
 
+        /// <summary>
+        /// Разбор аргументов командной строки и заполнение объекта CliOptions
+        /// </summary> <param name="args">Массив аргументов командной строки</param>
+        /// <returns>Заполненный объект CliOptions с параметрами из командной строки</returns> 
         private static CliOptions ParseArgs(string[] args)
         {
             var options = new CliOptions();
@@ -241,6 +303,10 @@ namespace ElmaPasswordGenerator
             return options;
         }
 
+        /// <summary>
+        /// Проверка, является ли аргумент запросом помощи
+        /// </summary> <param name="arg">Аргумент для проверки</param>
+        /// <returns>true, если аргумент является запросом помощи; иначе false</returns>
         private static bool IsHelpArg(string arg)
         {
             return string.Equals(arg, "-h", StringComparison.OrdinalIgnoreCase)
@@ -248,6 +314,12 @@ namespace ElmaPasswordGenerator
                 || string.Equals(arg, "/?", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// Получить следующее значение из массива аргументов, проверяя его наличие и корректность
+        /// </summary> <param name="args">Массив аргументов командной строки</param> 
+        /// <param name="index">Текущий индекс в массиве аргументов (будет увеличен на 1 после получения значения)</param>
+        /// <param name="argName">Имя аргумента для сообщения об ошибке при отсутствии значения</param>
+        /// <returns>Следующее значение из массива аргументов</returns>
         private static string GetNextValue(string[] args, ref int index, string argName)
         {
             if (index + 1 >= args.Length || args[index + 1].StartsWith("-"))
@@ -258,6 +330,10 @@ namespace ElmaPasswordGenerator
             return args[index];
         }
 
+        /// <summary>
+        /// Разбор строки с разделителями и преобразование ее в список целых чисел для исключенных Id
+        /// </summary> <param name="value">Строка с разделителями, содержащая Id для исключения</param>
+        /// <returns>Список целых чисел, представляющих Id для исключения</returns>
         private static int ParsePositiveInt(string value, string argName)
         {
             if (!int.TryParse(value, out var parsed) || parsed <= 0)
@@ -266,7 +342,15 @@ namespace ElmaPasswordGenerator
             }
             return parsed;
         }
-
+        
+        /// <summary>
+        /// Разбор строки в булево значение, поддерживающий различные форматы (true/false, 1/0) и учитывающий отсутствие значения для флагов
+        /// </summary> <param name="value">Строка для разбора в булево значение (может быть null для флагов)</param>
+        /// <param name="args">Массив аргументов командной строки для получения следующего значения, если value равно null</param>
+        /// <param name="index">Текущий индекс в массиве аргументов (будет увеличен на 1, если будет использовано следующее значение)</param>
+        /// <param name="argName">Имя аргумента для сообщения об ошибке при неверном значении</param>
+        /// <param name="defaultIfMissing">Значение по умолчанию, если value равно null и нет следующего значения (используется для флагов)</param>
+        /// <returns>Разобранное булево значение</returns> 
         private static bool ParseBool(string value, string[] args, ref int index, string argName, bool defaultIfMissing)
         {
             if (value == null)
@@ -299,6 +383,10 @@ namespace ElmaPasswordGenerator
             throw new ArgumentException($"Неверное значение для -{argName}: {value}");
         }
 
+        /// <summary>
+        /// Разбор строки с разделителями и преобразование ее в список целых чисел для исключенных Id
+        /// </summary> <param name="value">Строка с разделителями, содержащая Id для исключения</param>
+        /// <returns>Список целых  чисел, представляющих Id для исключения</returns>
         private static List<int> ParseIdList(string value)
         {
             var result = new List<int>();
@@ -320,6 +408,12 @@ namespace ElmaPasswordGenerator
             return result;
         }
 
+        /// <summary>
+        /// Построение SQL запроса для обновления пароля с учетом исключенных Id
+        /// </summary> <param name="passwordHash">Хеш пароля для установки</param>
+        /// <param name="salt">Соль для установки</param>
+        /// <param name="excludedIds">Список Id пользователей, которые не должны быть обновлены (будут исключены из условия WHERE)</param>
+        /// <returns>Сформированный SQL запрос в виде строки</returns>
         private static string BuildSql(string passwordHash, string salt, IReadOnlyList<int> excludedIds)
         {
             var sb = new StringBuilder();
@@ -336,6 +430,13 @@ namespace ElmaPasswordGenerator
             return sb.ToString().TrimEnd();
         }
 
+        /// <summary>
+        /// Построение итогового вывода с информацией о пароле, соли, хеше и SQL запросе (если требуется)
+        /// </summary> <param name="password">Сгенерированный пароль</param>
+        /// <param name="salt">Соль для пароля</param>
+        /// <param name="passwordHash">Хеш пароля с солью</param>
+        /// <param name="sql">SQL запрос для обновления пароля (может быть null, если не требуется)</param>
+        /// <returns>Сформированная строка для вывода в консоль и/или файл</returns>
         private static string BuildOutput(string password, string salt, string passwordHash, string sql)
         {
             var sb = new StringBuilder();
@@ -350,6 +451,10 @@ namespace ElmaPasswordGenerator
             return sb.ToString().TrimEnd();
         }
 
+        /// <summary>
+        /// Разрешение пути для сохранения файла, поддерживающее как директории, так и полные пути к файлам, а также создание необходимых директорий
+        /// </summary> <param name="outputPath">Путь, указанный пользователем для сохранения файла (может быть директорией или полным путем к файлу)</param>
+        /// <returns>Разрешенный полный путь к файлу для сохранения</returns>
         private static string ResolveOutputPath(string outputPath)
         {
             var trimmed = outputPath?.Trim();
@@ -379,11 +484,18 @@ namespace ElmaPasswordGenerator
             return trimmed;
         }
 
+        /// <summary>
+        /// Запись содержимого в файл с использованием UTF-8 без BOM
+        /// </summary> <param name="outputPath">Путь к файлу для сохранения</param>
+        /// <param name="content">Содержимое для записи в файл</param>
         private static void WriteOutputFile(string outputPath, string content)
         {
             File.WriteAllText(outputPath, content, new UTF8Encoding(false));
         }
 
+        /// <summary>
+        /// Вывод справки по использованию программы в консоль
+        /// </summary>
         private static void PrintUsage()
         {
             Console.WriteLine("Помощь:");
