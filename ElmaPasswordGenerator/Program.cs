@@ -35,17 +35,29 @@ namespace ElmaPasswordGenerator
                     return 0;
                 }
 
-                var generatedPassword = GeneratePassword(options.Length, options.UseDigits, options.UseSpecial);
-                var salt = GenerateSalt();
-                var passwordHash = GetSha256Hash(generatedPassword, salt);
+                ValidateOptions(options);
 
-                string sql = null;
-                if (options.GenerateSql)
+                string output;
+                if (options.GenerateUniquePerExclId)
                 {
-                    sql = BuildSql(passwordHash, salt, options.ExcludedIds);
+                    var entries = BuildPerUserPasswordEntries(options);
+                    output = BuildPerUserOutput(entries);
+                }
+                else
+                {
+                    var generatedPassword = GeneratePassword(options.Length, options.UseDigits, options.UseSpecial);
+                    var salt = GenerateSalt();
+                    var passwordHash = GetSha256Hash(generatedPassword, salt);
+
+                    string sql = null;
+                    if (options.GenerateSql)
+                    {
+                        sql = BuildSql(passwordHash, salt, options.ExcludedIds);
+                    }
+
+                    output = BuildOutput(generatedPassword, salt, passwordHash, sql);
                 }
 
-                var output = BuildOutput(generatedPassword, salt, passwordHash, sql);
                 Console.WriteLine(output);
 
                 if (!string.IsNullOrWhiteSpace(options.OutputPath))
@@ -252,6 +264,19 @@ namespace ElmaPasswordGenerator
             public bool UseDigits { get; set; } = true;
             public bool UseSpecial { get; set; } = true;
             public bool ShowHelp { get; set; }
+            public bool GenerateUniquePerExclId { get; set; }
+        }
+
+        /// <summary>
+        /// Данные для сгенерированного пароля конкретного пользователя
+        /// </summary>
+        private sealed class UserPasswordEntry
+        {
+            public int UserId { get; set; }
+            public string Password { get; set; }
+            public string Salt { get; set; }
+            public string Hash { get; set; }
+            public string Sql { get; set; }
         }
 
         /// <summary>
@@ -312,6 +337,9 @@ namespace ElmaPasswordGenerator
                         break;
                     case "ps":
                         options.UseSpecial = ParseBool(value, args, ref i, "ps", defaultIfMissing: true);
+                        break;
+                    case "uniqueperexclid":
+                        options.GenerateUniquePerExclId = ParseBool(value, args, ref i, "uniquePerExclId", defaultIfMissing: true);
                         break;
                     default:
                         throw new ArgumentException($"Неизвестный аргумент: -{key}");
@@ -423,6 +451,43 @@ namespace ElmaPasswordGenerator
                 result.Add(id);
             }
 
+            return result.Distinct().ToList();
+        }
+
+        /// <summary>
+        /// Проверка согласованности параметров перед генерацией
+        /// </summary>
+        private static void ValidateOptions(CliOptions options)
+        {
+            if (options.GenerateUniquePerExclId && (options.ExcludedIds == null || options.ExcludedIds.Count == 0))
+            {
+                throw new ArgumentException("Для -uniquePerExclId необходимо указать хотя бы один id через -exclId.");
+            }
+        }
+
+        /// <summary>
+        /// Генерация набора уникальных паролей для каждого указанного Id
+        /// </summary>
+        private static List<UserPasswordEntry> BuildPerUserPasswordEntries(CliOptions options)
+        {
+            var result = new List<UserPasswordEntry>(options.ExcludedIds.Count);
+
+            foreach (var userId in options.ExcludedIds)
+            {
+                var password = GeneratePassword(options.Length, options.UseDigits, options.UseSpecial);
+                var salt = GenerateSalt();
+                var hash = GetSha256Hash(password, salt);
+
+                result.Add(new UserPasswordEntry
+                {
+                    UserId = userId,
+                    Password = password,
+                    Salt = salt,
+                    Hash = hash,
+                    Sql = options.GenerateSql ? BuildSqlForUser(hash, salt, userId) : null
+                });
+            }
+
             return result;
         }
 
@@ -449,6 +514,18 @@ namespace ElmaPasswordGenerator
         }
 
         /// <summary>
+        /// Построение SQL запроса для обновления пароля конкретного пользователя
+        /// </summary>
+        private static string BuildSqlForUser(string passwordHash, string salt, int userId)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("UPDATE \"usersecurityprofile\"");
+            sb.AppendLine($"SET \"Password\" = '{passwordHash}', salt = '{salt}', forcedchangepassword = NULL, countfailedlogon = NULL");
+            sb.AppendLine($"WHERE \"User\" = {userId};");
+            return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>
         /// Построение итогового вывода с информацией о пароле, соли, хеше и SQL запросе (если требуется)
         /// </summary> <param name="password">Сгенерированный пароль</param>
         /// <param name="salt">Соль для пароля</param>
@@ -466,6 +543,35 @@ namespace ElmaPasswordGenerator
                 sb.AppendLine("SQL:");
                 sb.Append(sql.TrimEnd());
             }
+            return sb.ToString().TrimEnd();
+        }
+
+        /// <summary>
+        /// Построение итогового вывода для режима отдельных паролей по Id
+        /// </summary>
+        private static string BuildPerUserOutput(IReadOnlyList<UserPasswordEntry> entries)
+        {
+            var sb = new StringBuilder();
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                sb.AppendLine($"UserId: {entry.UserId}");
+                sb.AppendLine($"Password: {entry.Password}");
+                sb.AppendLine($"Salt: {entry.Salt}");
+                sb.AppendLine($"Hash: {entry.Hash}");
+                if (!string.IsNullOrWhiteSpace(entry.Sql))
+                {
+                    sb.AppendLine("SQL:");
+                    sb.AppendLine(entry.Sql.TrimEnd());
+                }
+
+                if (i < entries.Count - 1)
+                {
+                    sb.AppendLine();
+                }
+            }
+
             return sb.ToString().TrimEnd();
         }
 
@@ -518,13 +624,15 @@ namespace ElmaPasswordGenerator
         {
             Console.WriteLine("Помощь:");
             Console.WriteLine("  ElmaPasswordGenerator -pl 12 -pd true -ps true -generateSQL -exclId 1,2,3 -out C:\\temp\\password.txt");
+            Console.WriteLine("  ElmaPasswordGenerator -pl 12 -generateSQL -exclId 10,12 -uniquePerExclId");
             Console.WriteLine("Параметры:");
             Console.WriteLine("  -pl <length>        Длина пароля (12 по умолчанию)");
             Console.WriteLine("  -generateSQL        Генерировать SQL (flag or true/false)");
-            Console.WriteLine("  -exclId <ids>       разделенные запятой Id пользователей для NOT IN в SQL");
+            Console.WriteLine("  -exclId <ids>       Id через запятую: для NOT IN или целевые пользователи в -uniquePerExclId");
             Console.WriteLine("  -out <path>         Директория куда будет сохранен файл (writes txt)");
             Console.WriteLine("  -pd [true|false]    Использовать ли числа в пароле (по умолчанию true)");
             Console.WriteLine("  -ps [true|false]    Использовать ли специальные символы в пароле (по умолчанию true)");
+            Console.WriteLine("  -uniquePerExclId    Генерировать уникальный пароль для каждого id из -exclId");
         }
     }
 }
