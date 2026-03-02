@@ -73,9 +73,9 @@ dotnet run -- -pl 20 -generateSQL -exclId 10,12,15 -uniquePerExclId -out C:\temp
 - `Hash`
 - `SQL` (если включен `-generateSQL`)
 
-При `-uniquePerExclId` вывод формируется отдельным блоком для каждого `UserId`:
+При `-uniquePerExclId` вывод формируется отдельным блоком для каждого `UserId`, а весь SQL собирается одним блоком в конце:
 - `UserId`
 - `Password`
 - `Salt`
 - `Hash`
-- `SQL` (если включен `-generateSQL`)
+- `SQL` (если включен `-generateSQL`, выводится единым блоком в конце)

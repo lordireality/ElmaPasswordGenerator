@@ -552,6 +552,7 @@ namespace ElmaPasswordGenerator
         private static string BuildPerUserOutput(IReadOnlyList<UserPasswordEntry> entries)
         {
             var sb = new StringBuilder();
+            var sqlBuilder = new StringBuilder();
 
             for (int i = 0; i < entries.Count; i++)
             {
@@ -560,16 +561,28 @@ namespace ElmaPasswordGenerator
                 sb.AppendLine($"Password: {entry.Password}");
                 sb.AppendLine($"Salt: {entry.Salt}");
                 sb.AppendLine($"Hash: {entry.Hash}");
-                if (!string.IsNullOrWhiteSpace(entry.Sql))
-                {
-                    sb.AppendLine("SQL:");
-                    sb.AppendLine(entry.Sql.TrimEnd());
-                }
 
                 if (i < entries.Count - 1)
                 {
                     sb.AppendLine();
                 }
+
+                if (!string.IsNullOrWhiteSpace(entry.Sql))
+                {
+                    if (sqlBuilder.Length > 0)
+                    {
+                        sqlBuilder.AppendLine();
+                    }
+
+                    sqlBuilder.AppendLine(entry.Sql.TrimEnd());
+                }
+            }
+
+            if (sqlBuilder.Length > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("SQL:");
+                sb.Append(sqlBuilder.ToString().TrimEnd());
             }
 
             return sb.ToString().TrimEnd();
