@@ -29,15 +29,18 @@ dotnet run -- -pl 12 -pd true -ps true -generateSQL -exclId 1,2,3 -out C:\temp\p
 ## Параметры командной строки
 
 - `-pl <length>` — длина пароля (по умолчанию `12`).
+- `-uniquePl <length>` — отдельная длина пароля для режима `-uniquePerExclId`.
+  - Если не указан, в режиме `-uniquePerExclId` используется значение `-pl`.
+  - Можно использовать только вместе с `-uniquePerExclId`.
 - `-generateSQL` — генерировать SQL (флаг). Можно передать `true|false` или `1|0`.
 - `-exclId <ids>` — список `id` через запятую.
   - В обычном режиме используется для `NOT IN` в SQL.
-  - В режиме `-uniquePerExclId` становится списком целевых пользователей, для каждого из которых генерируется отдельный пароль.
+  - В режиме `-uniquePerExclId` эти `id` исключаются из общего `UPDATE ... NOT IN (...)` и одновременно для каждого из них генерируется отдельный пароль и отдельный `UPDATE`.
 - `-out <path>` — путь для сохранения результата в файл.
   - Если указан каталог, будет создан файл `password.txt`.
 - `-pd [true|false]` — использовать ли цифры в пароле (по умолчанию `true`).
 - `-ps [true|false]` — использовать ли спецсимволы в пароле (по умолчанию `true`).
-- `-uniquePerExclId [true|false]` — генерировать уникальный `Password/Salt/Hash` для каждого `id` из `-exclId`.
+- `-uniquePerExclId [true|false]` — в дополнение к общему паролю для всех, кроме `-exclId`, генерировать уникальный `Password/Salt/Hash` для каждого `id` из `-exclId`.
 - `-h`, `--help`, `/?` — показать справку.
 
 Поддерживаются формы:
@@ -65,6 +68,16 @@ dotnet run -- -pl 20 -generateSQL -exclId 10,12,15 -out C:\temp\password.txt
 dotnet run -- -pl 20 -generateSQL -exclId 10,12,15 -uniquePerExclId -out C:\temp\password.txt
 ```
 
+В этом режиме будет:
+- один общий `UPDATE` с `WHERE "User" NOT IN (10, 12, 15)`
+- затем отдельные `UPDATE` для `User = 10`, `12`, `15`
+
+Уникальные пароли для списка, но с отдельной длиной только для этого режима:
+
+```powershell
+dotnet run -- -pl 12 -uniquePl 20 -generateSQL -exclId 10,12,15 -uniquePerExclId -out C:\temp\password.txt
+```
+
 ## Вывод
 
 В консоль (и в файл, если указан `-out`) выводятся:
@@ -73,9 +86,13 @@ dotnet run -- -pl 20 -generateSQL -exclId 10,12,15 -uniquePerExclId -out C:\temp
 - `Hash`
 - `SQL` (если включен `-generateSQL`)
 
-При `-uniquePerExclId` вывод формируется отдельным блоком для каждого `UserId`, а весь SQL собирается одним блоком в конце:
+При `-uniquePerExclId` вывод включает общий пароль для всех, кроме `-exclId`, затем отдельные блоки по `UserId`, а весь SQL собирается одним блоком в конце:
+- `Default`
+- `Password`
+- `Salt`
+- `Hash`
 - `UserId`
 - `Password`
 - `Salt`
 - `Hash`
-- `SQL` (если включен `-generateSQL`, выводится единым блоком в конце)
+- `SQL` (если включен `-generateSQL`, сначала общий `NOT IN`, затем индивидуальные `UPDATE`)
